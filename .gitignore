@@ -50,6 +50,10 @@ next-env.d.ts
 .claude/settings.local.json
 /.specs/
 
+# generated agent specifications and implementation plans
+/.specs/
+/docs/superpowers/plans/
+
 # playwright-mcp
 .playwright-mcp
 
