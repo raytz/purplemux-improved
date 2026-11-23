@@ -53,7 +53,7 @@ describe('single-response agent execution', () => {
     await callAgentText('claude', 'title', 'instructions', { textOnly: true, cwd: '/repo' });
     expect(mocks.exec).toHaveBeenCalledWith('claude', [
       '-p', '--bare', '--tools', '', '--disallowedTools', '*',
-      '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+      '--strict-mcp-config',
       '--no-session-persistence', '--output-format', 'text',
     ], expect.objectContaining({ cwd: '/tmp/purplemux-text-only-test' }), expect.any(Function));
     expect(mocks.rm).toHaveBeenCalledWith('/tmp/purplemux-text-only-test', { recursive: true, force: true });
@@ -77,7 +77,7 @@ describe('single-response agent execution', () => {
     })).toBe('answer');
     expect(mocks.exec).toHaveBeenCalledOnce();
     expect(mocks.spawn).toHaveBeenCalledWith('/usr/bin/fish', ['-ilc',
-      `claude '-p' '--bare' '--tools' '' '--disallowedTools' '*' '--strict-mcp-config' '--mcp-config' '{"mcpServers":{}}' '--no-session-persistence' '--output-format' 'text'`,
+      `claude '-p' '--bare' '--tools' '' '--disallowedTools' '*' '--strict-mcp-config' '--no-session-persistence' '--output-format' 'text'`,
     ], expect.objectContaining({
       cwd: '/tmp/purplemux-text-only-test',
       detached: process.platform !== 'win32',

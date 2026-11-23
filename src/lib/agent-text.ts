@@ -62,7 +62,7 @@ const callClaudeCli = async (input: string, systemPrompt: string, options: IAgen
   const directory = options.textOnly ? await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-text-only-')) : undefined;
   const args = ['-p', ...(options.textOnly ? [
     '--bare', '--tools', '', '--disallowedTools', '*',
-    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    '--strict-mcp-config',
     '--no-session-persistence', '--output-format', 'text',
   ] : [])];
   const prompt = systemPrompt + '\n\n' + input;
