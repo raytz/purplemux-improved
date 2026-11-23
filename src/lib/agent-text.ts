@@ -60,9 +60,10 @@ const runClaudeShell = (shell: string, command: string, prompt: string, cwd: str
 const callClaudeCli = async (input: string, systemPrompt: string, options: IAgentTextOptions): Promise<string> => {
   const resolvedPath = await getShellPath();
   const directory = options.textOnly ? await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-text-only-')) : undefined;
+  const mcpConfigPath = directory ? path.join(directory, 'mcp.json') : undefined;
   const args = ['-p', ...(options.textOnly ? [
     '--bare', '--tools', '', '--disallowedTools', '*',
-    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    '--strict-mcp-config', '--mcp-config', mcpConfigPath!,
     '--no-session-persistence', '--output-format', 'text',
   ] : [])];
   const prompt = systemPrompt + '\n\n' + input;
@@ -77,6 +78,7 @@ const callClaudeCli = async (input: string, systemPrompt: string, options: IAgen
     child.stdin?.end(prompt);
   });
   try {
+    if (mcpConfigPath) await fs.writeFile(mcpConfigPath, '{"mcpServers":{}}', { mode: 0o600 });
     try {
       return await run();
     } catch (error) {
