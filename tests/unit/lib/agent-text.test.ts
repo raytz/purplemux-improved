@@ -1,9 +1,9 @@
 vi.mock('@/lib/config-store', () => ({ getAgentEnvironment: async (provider: 'claude' | 'codex') => ({ AGENT_ONLY: provider, SHARED: provider, [`${provider.toUpperCase()}_ONLY_KEY`]: 'private' }) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-const mocks = vi.hoisted(() => ({ exec: vi.fn(), spawn: vi.fn(), write: vi.fn(), end: vi.fn(), read: vi.fn(), writeFile: vi.fn(), unlink: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn() }));
+const mocks = vi.hoisted(() => ({ exec: vi.fn(), spawn: vi.fn(), write: vi.fn(), end: vi.fn(), read: vi.fn(), unlink: vi.fn(), mkdtemp: vi.fn(), rm: vi.fn() }));
 vi.mock('child_process', () => ({ execFile: mocks.exec, spawn: mocks.spawn }));
-vi.mock('fs/promises', () => ({ default: { readFile: mocks.read, writeFile: mocks.writeFile, unlink: mocks.unlink, mkdtemp: mocks.mkdtemp, rm: mocks.rm } }));
+vi.mock('fs/promises', () => ({ default: { readFile: mocks.read, unlink: mocks.unlink, mkdtemp: mocks.mkdtemp, rm: mocks.rm } }));
 vi.mock('@/lib/preflight', () => ({ getShellPath: async () => '/shell/bin' }));
 vi.mock('@/lib/shell-env', () => ({
   defaultShell: () => '/usr/bin/fish',
@@ -48,14 +48,12 @@ describe('single-response agent execution', () => {
     expect(await callAgentText('claude', 'data', 'instructions')).toBe('answer');
     expect(mocks.exec).toHaveBeenCalledWith('claude', ['-p'], expect.objectContaining({ timeout: 120000 }), expect.any(Function));
     expect(mocks.end).toHaveBeenCalledWith('instructions\n\ndata');
-    expect(mocks.writeFile).not.toHaveBeenCalled();
   });
   it('disables tools, MCP, context discovery, and session persistence outside the repository', async () => {
     await callAgentText('claude', 'title', 'instructions', { textOnly: true, cwd: '/repo' });
-    expect(mocks.writeFile).toHaveBeenCalledWith('/tmp/purplemux-text-only-test/mcp.json', '{"mcpServers":{}}', { mode: 0o600 });
     expect(mocks.exec).toHaveBeenCalledWith('claude', [
       '-p', '--bare', '--tools', '', '--disallowedTools', '*',
-      '--strict-mcp-config', '--mcp-config', '/tmp/purplemux-text-only-test/mcp.json',
+      '--strict-mcp-config',
       '--no-session-persistence', '--output-format', 'text',
     ], expect.objectContaining({ cwd: '/tmp/purplemux-text-only-test' }), expect.any(Function));
     expect(mocks.rm).toHaveBeenCalledWith('/tmp/purplemux-text-only-test', { recursive: true, force: true });
@@ -79,7 +77,7 @@ describe('single-response agent execution', () => {
     })).toBe('answer');
     expect(mocks.exec).toHaveBeenCalledOnce();
     expect(mocks.spawn).toHaveBeenCalledWith('/usr/bin/fish', ['-ilc',
-      `claude '-p' '--bare' '--tools' '' '--disallowedTools' '*' '--strict-mcp-config' '--mcp-config' '/tmp/purplemux-text-only-test/mcp.json' '--no-session-persistence' '--output-format' 'text'`,
+      `claude '-p' '--bare' '--tools' '' '--disallowedTools' '*' '--strict-mcp-config' '--no-session-persistence' '--output-format' 'text'`,
     ], expect.objectContaining({
       cwd: '/tmp/purplemux-text-only-test',
       detached: process.platform !== 'win32',
@@ -99,12 +97,6 @@ describe('single-response agent execution', () => {
     expect(mocks.exec).toHaveBeenCalledOnce();
     expect(mocks.spawn).toHaveBeenCalledOnce();
     expect(mocks.rm).toHaveBeenCalledOnce();
-  });
-  it('cleans the isolated directory when writing the MCP configuration fails', async () => {
-    mocks.writeFile.mockRejectedValueOnce(new Error('disk full'));
-    await expect(callAgentText('claude', 'title', 'instructions', { textOnly: true })).rejects.toThrow('claude -p failed: disk full');
-    expect(mocks.exec).not.toHaveBeenCalled();
-    expect(mocks.rm).toHaveBeenCalledWith('/tmp/purplemux-text-only-test', { recursive: true, force: true });
   });
   it.each(['callback', 'spawn'])('cleans the isolated directory after a %s failure without retrying unrestricted', async (failure) => {
     mocks.exec.mockImplementation((_command, _args, _options, callback) => {
