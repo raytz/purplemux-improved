@@ -19,9 +19,11 @@ describe('server update installation', () => {
     const [command, args, options] = mocks.exec.mock.calls[0];
     expect(command).toBe('npm');
     expect(args).toEqual(['install', '--prefix', '/isolated/updates/0.6.0-staging', '--registry', 'https://registry.npmjs.org', '--omit=dev', '--no-audit', '--no-fund', '--ignore-scripts', 'purplemux-improved@0.6.0']);
+    expect(options.cwd).toBe('/isolated/updates/0.6.0-staging');
     expect(options.timeout).toBe(600_000);
     expect(mocks.access).toHaveBeenCalledTimes(3);
     expect(mocks.exec.mock.calls[1][1]).toEqual(['--check', directory + '/dist/server.js']);
+    expect(mocks.exec.mock.calls[1][2].cwd).toBe('/isolated/updates/0.6.0-staging');
   });
   it('rejects commands disguised as versions before any filesystem or process action', async () => {
     await expect(downloadServerUpdate('0.6.0;echo bad')).rejects.toThrow('Invalid version');

@@ -23,14 +23,14 @@ export const downloadServerUpdate = async (version: string): Promise<string> => 
   const staging = await fs.mkdtemp(path.join(updates, `${version}-`));
   // Keep the running installation intact until the replacement has started.
   await exec('npm', ['install', '--prefix', staging, '--registry', REGISTRY, '--omit=dev', '--no-audit', '--no-fund', '--ignore-scripts', `${pkg.name}@${version}`], {
-    timeout: 10 * 60 * 1000, maxBuffer: 4 * 1024 * 1024,
+    cwd: staging, timeout: 10 * 60 * 1000, maxBuffer: 4 * 1024 * 1024,
     env: { ...process.env, npm_config_update_notifier: 'false' },
   });
   const directory = path.join(staging, 'node_modules', pkg.name);
   const manifest = JSON.parse(await fs.readFile(path.join(directory, 'package.json'), 'utf8'));
   if (manifest.name !== pkg.name || manifest.version !== version) throw new Error('Downloaded package version mismatch');
   await Promise.all(['dist/server.js', '.next/standalone/server.js', 'bin/purplemux.js'].map((file) => fs.access(path.join(directory, file))));
-  await exec(process.execPath, ['--check', path.join(directory, 'dist/server.js')], { timeout: 15_000 });
+  await exec(process.execPath, ['--check', path.join(directory, 'dist/server.js')], { cwd: staging, timeout: 15_000 });
   return directory;
 };
 
