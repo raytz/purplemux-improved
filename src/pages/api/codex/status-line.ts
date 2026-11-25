@@ -3,6 +3,7 @@ import { findTab } from '@/lib/cli-utils';
 import { getStatusManager } from '@/lib/status-manager';
 import { capturePaneContent } from '@/lib/tmux';
 import { readCodexStatusLine } from '@/lib/codex-status-line';
+import { getTabAgentProviderId } from '@/lib/tab-agent-identity';
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -15,7 +16,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     return res.status(400).json({ error: 'workspaceId, tabId and sessionId are required' });
   }
   const found = await findTab(workspaceId, tabId);
-  if (!found || found.tab.panelType !== 'codex-cli') return res.status(404).json({ error: 'Codex tab not found' });
+  if (!found || getTabAgentProviderId(found.tab) !== 'codex') return res.status(404).json({ error: 'Codex tab not found' });
   const isCurrentSession = () => {
     const current = getStatusManager().getAllForClient()[tabId];
     return current?.workspaceId === workspaceId && current.agentSessionId === sessionId && current.cliState !== 'inactive';

@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { nanoid } from 'nanoid';
+import type { IShellStartup } from '@/lib/shell-env';
 import { createSession, hasSession, killSession, resolveExistingDir, sendKeys, workspaceSessionName } from '@/lib/tmux';
 import { broadcastSync } from '@/lib/sync-server';
 import { createLogger } from '@/lib/logger';
@@ -297,7 +298,7 @@ export const deletePane = async (
   }
 };
 
-export const addTabToPane = async (wsId: string, paneId: string, name?: string, cwd?: string, panelType?: string, command?: string): Promise<ITab | null> =>
+export const addTabToPane = async (wsId: string, paneId: string, name?: string, cwd?: string, panelType?: string, { command, startup }: { command?: string; startup?: IShellStartup } = {}): Promise<ITab | null> =>
   withLock(async () => {
     const filePath = resolveLayoutFile(wsId);
     const layout = await readLayoutFile(filePath);
@@ -312,7 +313,7 @@ export const addTabToPane = async (wsId: string, paneId: string, name?: string, 
     const tabId = generateTabId();
     const sessionName = workspaceSessionName(wsId, paneId, tabId);
     if (!isWebBrowser) {
-      await createSession(sessionName, 80, 24, effectiveCwd);
+      await createSession(sessionName, 80, 24, effectiveCwd, startup);
       if (cwdLost) {
         log.warn(`tab cwd missing, falling back to ${effectiveCwd}: ${sessionName} (was ${cwd})`);
       }

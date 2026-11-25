@@ -4,7 +4,7 @@ import { promisify } from 'util';
 import path from 'path';
 import { nanoid } from 'nanoid';
 import { PRISTINE_ENV } from '@/lib/pristine-env';
-import { buildShellLaunchCommand } from '@/lib/shell-env';
+import { buildShellLaunchCommand, type IShellStartup } from '@/lib/shell-env';
 import { createLogger } from '@/lib/logger';
 import { isLinux } from '@/lib/platform';
 import { recordTerminalInput } from '@/lib/terminal-input-activity';
@@ -40,6 +40,7 @@ export const createSession = async (
   cols: number,
   rows: number,
   cwd?: string,
+  startup?: IShellStartup,
 ): Promise<void> => {
   const shellCwd = path.resolve(cwd || PRISTINE_ENV.HOME || '/');
   if (!(await fs.stat(shellCwd)).isDirectory()) {
@@ -49,7 +50,7 @@ export const createSession = async (
   const tmuxCwd = shellCwd.replace(/;$/, '\\;');
   // tmux 서버 global env cache를 우회하기 위해 `env -i $SHELL -l`을 명령으로 직접 넘긴다.
   // execFile의 env 옵션은 tmux 서버가 이미 떠있는 경우 무시되므로 의존하지 않는다.
-  const shellCmd = buildShellLaunchCommand();
+  const shellCmd = buildShellLaunchCommand(startup);
   // tmux 3.7c는 서버 cwd가 삭제되면 -c도 무시한다. Linux에서는 셸 초기화 전 이동해
   // getcwd 경고까지 방지하고, env -C가 없는 플랫폼에서는 POSIX 셸로 복구한다.
   const shellArgs = isLinux

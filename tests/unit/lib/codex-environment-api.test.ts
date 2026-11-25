@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/config-store', () => ({ ...mocks, hashPassword: vi.fn(), generateSecret: vi.fn() }));
 vi.mock('@/lib/access-filter', () => ({ isBoundToLocalhostOnly: () => true, updateAccessFromConfig: vi.fn() }));
 vi.mock('@/lib/providers/codex', () => ({ buildCodexRuntimeArgs: mocks.buildArgs }));
+vi.mock('@/lib/providers/codex/hook-config', () => ({ buildCodexHookFlags: async () => ({ args: ['-c', 'hooks.Stop=[]'] }) }));
 vi.mock('@/lib/workspace-store', () => ({ getActiveWorkspaceId: async () => 'active' }));
 import configHandler from '@/pages/api/config';
 import launchHandler from '@/pages/api/codex/launch-args';
@@ -22,6 +23,15 @@ const response = () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.getConfig.mockResolvedValue({});
+});
+
+it('returns only hooks for a shell launch, even when UI overrides exist', async () => {
+  mocks.getConfig.mockResolvedValue({ codexEnvironment: { UI_ONLY: 'configured' } });
+  const res = response();
+  await launchHandler({ method: 'POST', body: { hooksOnly: true } } as NextApiRequest, res as unknown as NextApiResponse);
+  expect(res.json).toHaveBeenCalledWith({ args: ['-c', 'hooks.Stop=[]'], env: {} });
+  expect(mocks.buildArgs).not.toHaveBeenCalled();
+  expect(mocks.getConfig).not.toHaveBeenCalled();
 });
 
 describe.each(['codexEnvironment', 'claudeEnvironment'])('%s API', (field) => {

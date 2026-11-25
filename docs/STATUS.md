@@ -8,6 +8,10 @@ System that detects the in-progress state of the Claude CLI on the server, broad
 
 ## State Definitions
 
+New Codex tabs created with `pmuxi tab create -t codex-cli` register before the CLI returns. Their fish, bash or zsh login shell adds a `codex` launcher to PATH. User aliases and functions take precedence, and wrappers that delegate to `command codex` can keep their options. A root hook identifies the originating tmux pane and supplies the native session ID.
+
+If a shell configuration replaces the prompt hook or calls the native binary by absolute path, use `"$HOME/.purplemux/codex-bin/codex"` as the command in that tab or wrapper. Standalone help and version queries work while the server is offline. Session binding starts with new launches in these tabs.
+
 ### Worktree safety checks
 
 Worktree synchronization passes the strict tmux pane snapshot to `StatusManager.poll(snapshot)` and `areSessionsIdle(sessions, snapshot)`. This avoids a second non-strict query masking tmux errors during refresh. Missing panes remain unsafe.
