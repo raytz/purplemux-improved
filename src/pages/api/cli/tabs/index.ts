@@ -6,6 +6,8 @@ import { getWorkspaceById, getWorkspaces } from '@/lib/workspace-store';
 import { resolveFirstPaneId } from '@/lib/cli-utils';
 import '@/lib/providers';
 import { getTabAgentProvider } from '@/lib/tab-agent-provider';
+import { buildCodexShellSetup } from '@/lib/providers/codex';
+import { getStatusManager } from '@/lib/status-manager';
 import { checkAgentAvailabilityForPanelType, toAgentAvailabilityError } from '@/lib/agent-availability';
 import { createLogger } from '@/lib/logger';
 import type { TPanelType } from '@/types/terminal';
@@ -85,8 +87,16 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     }
 
     try {
-      const tab = await addTabToPane(workspaceId, paneId, name, ws.directories[0], resolvedType);
+      const shellSetup = resolvedType === 'codex-cli' ? await buildCodexShellSetup() : undefined;
+      const tab = await addTabToPane(workspaceId, paneId, name, ws.directories[0], resolvedType, { startup: shellSetup });
       if (!tab) return res.status(500).json({ error: 'Failed to create tab' });
+      const provider = getTabAgentProvider(tab);
+      if (shellSetup) {
+        getStatusManager().registerTab(tab.id, {
+          workspaceId, tabName: tab.name, tmuxSession: tab.sessionName, panelType: tab.panelType,
+          agentProviderId: provider?.id, agentSessionId: null, cliState: 'inactive', lastEvent: null, eventSeq: 0,
+        });
+      }
       return res.status(201).json({
         tabId: tab.id,
         workspaceId,
@@ -94,7 +104,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         sessionName: tab.sessionName,
         name: tab.name,
         panelType: tab.panelType,
-        agentProviderId: null,
+        agentProviderId: shellSetup ? provider?.id ?? null : null,
         agentSessionId: null,
       });
     } catch (err) {

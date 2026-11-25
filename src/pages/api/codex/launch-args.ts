@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { buildCodexRuntimeArgs } from '@/lib/providers/codex';
+import { buildCodexHookFlags } from '@/lib/providers/codex/hook-config';
 import { getActiveWorkspaceId } from '@/lib/workspace-store';
 import { createLogger } from '@/lib/logger';
 import { getConfig } from '@/lib/config-store';
@@ -15,14 +16,18 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const body = req.body as { workspaceId?: unknown; resumeSessionId?: unknown } | undefined;
-  const workspaceId = stringOrNull(body?.workspaceId) ?? await getActiveWorkspaceId();
-  const resumeSessionId = stringOrNull(body?.resumeSessionId) ?? undefined;
+  const body = req.body as { workspaceId?: unknown; resumeSessionId?: unknown; hooksOnly?: unknown } | undefined;
 
   try {
+    res.setHeader('Cache-Control', 'no-store');
+    if (body?.hooksOnly === true) {
+      const { args } = await buildCodexHookFlags();
+      return res.status(200).json({ args, env: {} });
+    }
+    const workspaceId = stringOrNull(body?.workspaceId) ?? await getActiveWorkspaceId();
+    const resumeSessionId = stringOrNull(body?.resumeSessionId) ?? undefined;
     const args = await buildCodexRuntimeArgs(workspaceId ?? undefined, resumeSessionId);
     const { codexEnvironment = {} } = await getConfig();
-    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({ args, env: codexEnvironment });
   } catch (err) {
     log.error(`codex launch args build failed: ${err instanceof Error ? err.message : err}`);

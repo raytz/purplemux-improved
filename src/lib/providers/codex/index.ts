@@ -1,6 +1,8 @@
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { randomUUID } from 'node:crypto';
+import { defaultShell, type IShellStartup } from '@/lib/shell-env';
 import { getDangerouslySkipPermissions } from '@/lib/config-store';
 import { createLogger } from '@/lib/logger';
 import { buildCodexHookFlags } from '@/lib/providers/codex/hook-config';
@@ -195,17 +197,37 @@ const fetchArgs = async (payload) => {
 };
 
 const main = async () => {
-  const { args, env } = await fetchArgs(parseArgs(process.argv.slice(2)));
+  const argv = process.argv.slice(2);
+  const shimDir = path.join(baseDir, 'codex-bin');
+  const shellLaunch = argv[0] === '--shell-launch';
+  const userArgs = shellLaunch ? argv.slice(1) : [];
+  const infoFlags = ['-h', '--help', '-V', '--version'];
+  const infoOnly = userArgs.some(arg => infoFlags.includes(arg)) &&
+    userArgs.every(arg => infoFlags.includes(arg) || arg === '--no-daemon');
+  const { args, env } = infoOnly ? { args: [], env: {} } :
+    await fetchArgs(shellLaunch ? { hooksOnly: true } : parseArgs(argv));
+  args.push(...userArgs);
   const childEnv = { ...process.env, ...env };
+  if (childEnv.PATH) {
+    const canonical = (dir) => {
+      try { return fs.realpathSync(dir || '.'); } catch { return dir; }
+    };
+    const shimPath = canonical(shimDir);
+    childEnv.PATH = childEnv.PATH.split(':').filter(dir => canonical(dir) !== shimPath).join(':');
+  }
   // Our config overrides require embedded mode; select it explicitly to avoid a fallback warning.
-  // Probe the actual binary so older Codex versions keep working.
-  try {
-    const help = execFileSync('codex', ['--help'], {
-      encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: childEnv,
-    });
-    if (help.includes('--no-daemon')) args.unshift('--no-daemon');
-  } catch {
-    // A failed capability probe must not prevent launching Codex.
+  // If a token before "--" is ambiguous, leave it to the native parser.
+  const separator = userArgs.indexOf('--');
+  const options = separator < 0 ? userArgs : userArgs.slice(0, separator);
+  if (!infoOnly && !options.includes('--no-daemon')) {
+    try {
+      const help = execFileSync('codex', ['--help'], {
+        encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: childEnv,
+      });
+      if (help.includes('--no-daemon')) args.unshift('--no-daemon');
+    } catch {
+      // A failed capability probe must not prevent launching Codex.
+    }
   }
   const child = spawn('codex', args, { stdio: 'inherit', env: childEnv });
   child.on('exit', (code, signal) => {
@@ -228,18 +250,23 @@ main().catch((err) => {
 });
 `;
 
-const ensureCodexLauncherScript = async (): Promise<string> => {
-  await fs.mkdir(PURPLEMUX_DIR, { recursive: true, mode: 0o700 });
+const installStartupFile = async (file: string, content: string): Promise<void> => {
+  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   try {
-    const existing = await fs.readFile(CODEX_LAUNCHER_SCRIPT, 'utf-8');
-    if (existing === CODEX_LAUNCHER_SCRIPT_CONTENT) {
-      await fs.chmod(CODEX_LAUNCHER_SCRIPT, 0o700).catch(() => {});
-      return CODEX_LAUNCHER_SCRIPT;
+    if (await fs.readFile(file, 'utf8') === content) {
+      await fs.chmod(file, 0o700);
+      return;
     }
-  } catch {
-    // missing or unreadable; rewrite below
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
-  await fs.writeFile(CODEX_LAUNCHER_SCRIPT, CODEX_LAUNCHER_SCRIPT_CONTENT, { mode: 0o700 });
+  const temp = `${file}.${randomUUID()}`;
+  await fs.writeFile(temp, content, { mode: 0o700 });
+  await fs.rename(temp, file);
+};
+
+const ensureCodexLauncherScript = async (): Promise<string> => {
+  await installStartupFile(CODEX_LAUNCHER_SCRIPT, CODEX_LAUNCHER_SCRIPT_CONTENT);
   return CODEX_LAUNCHER_SCRIPT;
 };
 
@@ -258,6 +285,34 @@ export const buildCodexRuntimeArgs = async (workspaceId: string | undefined, res
   parts.push(...devInstrArgs);
   if (skipPerms) parts.push('--yolo');
   return parts;
+};
+
+export const buildCodexShellSetup = async (): Promise<IShellStartup> => {
+  const bin = path.join(PURPLEMUX_DIR, 'codex-bin');
+  const launcher = await ensureCodexLauncherScript();
+  await installStartupFile(path.join(bin, 'codex'), `#!/bin/sh\nexec node ${shellSingleQuote(launcher)} --shell-launch "$@"\n`);
+  switch (path.basename(defaultShell())) {
+    case 'fish':
+      return { args: ['-C', 'set -gx PATH "$HOME/.purplemux/codex-bin" $PATH'] };
+    case 'bash':
+      return { env: { PROMPT_COMMAND: 'if [[ -z ${__pmux_codex_ready-} ]]; then export -n PROMPT_COMMAND; export PATH="$HOME/.purplemux/codex-bin:$PATH"; __pmux_codex_ready=1; fi' } };
+    case 'zsh': {
+      const dir = path.join(PURPLEMUX_DIR, 'codex-zsh');
+      // Hand the rest of login back to the user's dotfiles, including any ZDOTDIR they set.
+      await installStartupFile(path.join(dir, '.zshenv'), `unset ZDOTDIR
+[[ ! -r "$HOME/.zshenv" ]] || source "$HOME/.zshenv"
+_purplemux_codex_path() {
+  path=("$HOME/.purplemux/codex-bin" $path)
+  precmd_functions=(\${precmd_functions:#_purplemux_codex_path})
+  unfunction _purplemux_codex_path
+}
+precmd_functions+=(_purplemux_codex_path)
+`);
+      return { env: { ZDOTDIR: dir } };
+    }
+    default:
+      return {};
+  }
 };
 
 const composeLaunchCommand = async (workspaceId: string | undefined, resumeSessionId?: string): Promise<string> => {

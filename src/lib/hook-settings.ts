@@ -50,7 +50,7 @@ TOKEN_FILE="$HOME/.purplemux/cli-token"
 [ -f "$TOKEN_FILE" ] || exit 0
 PORT=$(cat "$PORT_FILE")
 TOKEN=$(cat "$TOKEN_FILE")
-SESSION=$(tmux display-message -p '#{session_name}' 2>/dev/null) || SESSION=""
+SESSION=$(tmux display-message -p -t "\${TMUX_PANE:?}" '#{session_name}' 2>/dev/null) || exit 0
 
 curl -sS -X POST -o /dev/null \\
   -H "x-pmux-token: \${TOKEN}" \\

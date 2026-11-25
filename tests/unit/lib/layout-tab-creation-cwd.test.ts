@@ -98,6 +98,16 @@ describe('tab creation working directory', () => {
     expect(mocks.exec.mock.calls[0][2].cwd).toBe('/');
   });
 
+  it('initializes the managed shell after cwd fallback without sending input or running a command', async () => {
+    const { addTabToPane } = await import('@/lib/layout-store');
+    const { buildCodexShellSetup } = await import('@/lib/providers/codex');
+    const tab = await addTabToPane('ws-test', 'pane-test', 'new', path.join(projectDir, 'gone'),
+      'codex-cli', { command: 'echo must-not-run', startup: await buildCodexShellSetup() });
+    expect(tab?.cwd).toBe(projectDir);
+    expect(commands()[0].join(' ')).toContain('codex-bin');
+    expect(commands().some(args => args.includes('send-keys'))).toBe(false);
+  });
+
   it.each([{ command: 'echo must-not-run' }, { resumeSessionId: 'test-session', panelType: 'codex-cli' }])('does not auto-launch after fallback: %j', async (launch) => {
     vi.useFakeTimers();
     const { res } = await call({ cwd: path.join(projectDir, 'missing'), ...launch });

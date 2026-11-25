@@ -66,13 +66,18 @@ export const defaultShell = (): string =>
 // 셸이 실제 터미널과 동일하게 rebuild하도록 한다. 새 펜 생성 경로를 추가할 때도 반드시 이
 // 함수를 거쳐야 한다 — split-window 등을 env -i 없이 직접 호출하면 서버 env(resolved PATH)를
 // 상속해 순서 문제가 재발한다.
-export const buildShellLaunchCommand = (): string => {
-  const env = { ...collectShellEnv(), PATH: LOGIN_SHELL_BASE_PATH };
+export interface IShellStartup {
+  env?: Record<string, string>;
+  args?: string[];
+}
+
+export const buildShellLaunchCommand = (startup?: IShellStartup): string => {
+  const env = { ...collectShellEnv(), PATH: LOGIN_SHELL_BASE_PATH, ...startup?.env };
   const envArgs = Object.entries(env)
     .map(([k, v]) => `${k}=${shQuote(v)}`)
     .join(' ');
   // TMUX/TMUX_PANE은 tmux가 pane 생성 시 환경변수로 주입한다. env -i가 이걸 지우지
   // 않도록 sh가 "$TMUX"를 expand하게 따옴표를 그대로 둔다 (Node가 아닌 sh에서 치환).
   const tmuxVars = 'TMUX="$TMUX" TMUX_PANE="$TMUX_PANE"';
-  return `env -i ${tmuxVars} ${envArgs} ${shQuote(defaultShell())} -l`;
+  return [`env -i ${tmuxVars} ${envArgs} ${shQuote(defaultShell())} -l`, ...(startup?.args ?? []).map(shQuote)].join(' ');
 };
