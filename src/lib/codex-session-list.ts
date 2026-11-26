@@ -7,7 +7,7 @@ import { createLogger } from '@/lib/logger';
 import { readCodexSessionStats } from '@/lib/stats/jsonl-parser-codex';
 import { createSessionMetaCache, type ISessionMetaCache } from '@/lib/session-meta-cache';
 import { runWithConcurrency } from '@/lib/bounded-concurrency';
-import { isCodexSubagent } from '@/lib/codex-session-family';
+import { codexChildInfo } from '@/lib/codex-session-family';
 
 const log = createLogger('codex-session-list');
 
@@ -28,6 +28,7 @@ export interface ICodexSessionEntry {
   firstUserMessage: string | null;
   turnCount: number;
   totalTokens: number | null;
+  child?: { parentId: string | null; label: string };
 }
 
 const g = globalThis as unknown as { __ptCodexListMetaCache?: ISessionMetaCache<ICodexSessionEntry> };
@@ -95,8 +96,13 @@ const extractMeta = async (jsonlPath: string): Promise<ICodexSessionEntry | null
           throw new Error('first-line-not-session-meta');
         }
         const payload = parsed.payload;
-        if (isCodexSubagent(payload.source)) return null;
         if (!payload.id) throw new Error('session-meta-missing-id');
+        const child = codexChildInfo(payload);
+        if (child) return {
+          sessionId: payload.id, jsonlPath, cwd: payload.cwd ?? null, child,
+          startedAt: Date.parse(payload.timestamp ?? parsed.timestamp ?? '') || 0,
+          lastActivityAt: 0, model: null, firstUserMessage: null, turnCount: 0, totalTokens: null,
+        };
         session_id = payload.id;
         const startedRaw = payload.timestamp ?? parsed.timestamp;
         startedAtIso = startedRaw ?? null;
@@ -150,6 +156,7 @@ const getCachedEntry = async (jsonlPath: string): Promise<ICodexSessionEntry | n
       return entry ? { ...entry, lastActivityAt: stat.mtimeMs } : null;
     });
     if (!entry) return null;
+    if (entry.child) return entry;
     const stats = await readCodexSessionStats(jsonlPath).catch(() => null);
     return {
       ...entry,
@@ -173,6 +180,7 @@ const dayDirPath = (date: Date): string =>
 interface IListCodexSessionsOptions {
   cwd: string;
   daysBack?: number;
+  includeChildren?: boolean;
 }
 
 interface IListCodexSessionsResult {
@@ -184,6 +192,7 @@ interface IListCodexSessionsResult {
 export const listCodexSessions = async ({
   cwd,
   daysBack = DEFAULT_DAYS_BACK,
+  includeChildren = false,
 }: IListCodexSessionsOptions): Promise<IListCodexSessionsResult> => {
   const sessions: ICodexSessionEntry[] = [];
   const today = new Date();
@@ -223,7 +232,7 @@ export const listCodexSessions = async ({
   for (const result of results) {
     if (result.status !== 'fulfilled' || !result.value) continue;
     const entry = result.value;
-    if (entry.cwd !== cwd) continue;
+    if (entry.cwd !== cwd || (entry.child && !includeChildren)) continue;
     sessions.push(entry);
   }
 

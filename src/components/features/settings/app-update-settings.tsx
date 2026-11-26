@@ -1,16 +1,17 @@
-import { Download, LoaderCircle, RefreshCw } from 'lucide-react';
+import { Download, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from '@/components/ui/alert-dialog';
 import useAppUpdate from '@/hooks/use-app-update';
-import { isNewerVersion } from '@/lib/app-update-version';
+import { getUpdateReleaseNotesUrl } from '@/lib/app-update-version';
 
 const AppUpdateSettings = ({ compact = false }: { compact?: boolean }) => {
   const t = useTranslations('settings.appUpdate');
   const { state, error, requesting, run, desktop, reconnectTimedOut } = useAppUpdate();
   const [forceVersion, setForceVersion] = useState<string | null>(null);
-  const available = !!state?.latestVersion && isNewerVersion(state.latestVersion, state.currentVersion);
+  const releaseNotesUrl = state && getUpdateReleaseNotesUrl(state.latestVersion, state.currentVersion);
+  const available = !!releaseNotesUrl;
   const skipped = available && state?.skippedVersion === state?.latestVersion;
   const busy = requesting || !!state?.installing || ['checking', 'downloading', 'restarting'].includes(state?.phase || '');
   const installing = state?.installing || ['downloading', 'ready', 'blocked', 'restarting'].includes(state?.phase || '');
@@ -27,6 +28,10 @@ const AppUpdateSettings = ({ compact = false }: { compact?: boolean }) => {
             {!compact && available && state.phase !== 'available' && ` · ${t('available', { version: state.latestVersion! })}`}
             {state.progress !== null && state.phase === 'downloading' && ` ${Math.round(state.progress)}%`}
           </p>}
+          {releaseNotesUrl && <a href={releaseNotesUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm underline underline-offset-2">
+            {t('releaseNotes')}<ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>}
           {!compact && skipped && <p className="text-xs text-muted-foreground">{t('skipped', { version: state!.latestVersion! })}</p>}
         </div>
         <div className="flex max-w-full shrink-0 flex-wrap gap-2">
