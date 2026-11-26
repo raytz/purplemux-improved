@@ -12,6 +12,18 @@ const native: INewTabSession = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('new tab session data', () => {
+  it('nests confirmed children even when retained, while omitting orphans, hidden and cyclic branches', () => {
+    const child = (id: string, parentId: string): INewTabSession => ({ ...native, key: `codex:${id}`,
+      child: { parentId, label: id }, target: { ...native.target, agentSessionId: id } });
+    const worker = child('worker', 's1');
+    const roots = mergeNewTabSessions(workspace, [native, worker, child('nested', 'worker'), child('gone', 's1'),
+      child('unreachable', 'gone'), child('orphan', 'missing'), child('a', 'b'), child('b', 'a')], [],
+    { 'worker-tab': { workspaceId: 'ws', panelType: 'codex-cli', agentSessionId: 'worker' } },
+    { statuses: {}, collapsed: {}, deleted: ['codex:gone'] });
+    expect(roots.map(item => item.key)).toEqual(['codex:s1']);
+    expect(roots[0].children?.map(item => item.key)).toEqual(['codex:worker']);
+    expect(roots[0].children?.[0].children?.map(item => item.key)).toEqual(['codex:nested']);
+  });
   it('deduplicates native and reclaimed sessions while preserving renamed titles and resume directories', () => {
     const sessions = mergeNewTabSessions(workspace, [native], [], {}, {
       statuses: {}, collapsed: {}, titles: { 'codex:s1': 'Saved title' }, sessions: {

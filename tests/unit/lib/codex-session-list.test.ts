@@ -63,6 +63,22 @@ describe('Codex session list', () => {
     expect(result.sessions.map((entry) => entry.sessionId).sort()).toEqual(['legacy', 'main']);
     expect(result.scannedFiles).toBe(5);
     expect(mocks.stats).toHaveBeenCalledTimes(2);
+    const withRelations = await list.listCodexSessions({ cwd: '/project', daysBack: 1, includeChildren: true });
+    expect(withRelations.sessions.find(item => item.sessionId === 'spawn')?.child?.parentId).toBe('main');
+    expect(withRelations.sessions.find(item => item.sessionId === 'review')?.child).toEqual({ parentId: null, label: 'review' });
+  });
+  it('accepts an explicit thread kind and keeps a user fork with no messages as a root', async () => {
+    for (const [id, meta] of Object.entries({
+      child: { thread_source: 'subagent', parent_thread_id: 'main', agent_nickname: 'Ada' },
+      fork: { thread_source: 'user', forked_from_id: 'main' },
+    })) {
+      await fs.writeFile(path.join(day, `${id}.jsonl`), JSON.stringify({ type: 'session_meta',
+        payload: { id, cwd: '/project', timestamp: '2026-11-26T00:00:00Z', ...meta } }));
+    }
+    const result = await list.listCodexSessions({ cwd: '/project', daysBack: 1, includeChildren: true });
+    expect(result.sessions.find(item => item.sessionId === 'child')?.child).toEqual({ parentId: 'main', label: 'Ada' });
+    expect(result.sessions.find(item => item.sessionId === 'fork')).toMatchObject({ turnCount: 0, firstUserMessage: null });
+    expect((await list.listCodexSessions({ cwd: '/project', daysBack: 1 })).sessions.map(item => item.sessionId)).toEqual(['fork']);
   });
   it('bounds concurrent loads while preserving filtering, metadata, counts and sorting', async () => {
     const files = await Promise.all(Array.from({ length: 35 }, (_, i) => writeSession(`s-${i}`)));

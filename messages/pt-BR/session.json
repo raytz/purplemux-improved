@@ -45,5 +45,14 @@
   "deleteOriginalDescription": "Delete the tool’s original session records and remove this session from this app’s history.",
   "deleteOriginalWarning": "This cannot be undone. The session can no longer be resumed, and associated subagent records may also be deleted.",
   "deletePermanently": "Delete permanently",
-  "deleteSessionInUse": "This session is in use. Close it before deleting its records."
+  "deleteSessionInUse": "This session is in use. Close it before deleting its records.",
+  "batch": {
+    "manage": "Gerenciar sessões",
+    "selectResults": "Selecionar todos os resultados",
+    "confirm": "Remover as {count} sessões selecionadas?",
+    "original": "Excluir também os registros originais",
+    "historyOnly": "Somente o histórico do Purplemux será removido. Os registros originais serão mantidos.",
+    "result": "Removidas: {success}. Falhas: {failed}."
+  },
+  "childAgents": "Subagentes ({count})"
 }

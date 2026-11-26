@@ -52,6 +52,21 @@ afterEach(async () => {
 });
 
 describe('update controls', () => {
+  it.each([false, true])('opens notes for the offered version without sending an update action (compact=%s)', async (compact) => {
+    await render(compact);
+    const link = container.querySelector('a')!;
+    expect(link.textContent).toBe(settings.appUpdate.releaseNotes);
+    expect(link.href).toBe('https://github.com/stirp/purplemux-improved/releases/tag/v0.6.0');
+    expect(link.target).toBe('_blank');
+    link.addEventListener('click', (event) => event.preventDefault(), { once: true });
+    await act(async () => link.click());
+    expect(actions).toEqual([]);
+  });
+  it.each([null, '0.5.9', '0.5.8', 'invalid'])('omits release notes without a newer stable target (%s)', async (latest) => {
+    state.latestVersion = latest;
+    await render();
+    expect(container.querySelector('a')).toBeNull();
+  });
   it('hides the skipped compact notice but keeps settings and manual upgrade available', async () => {
     await render(true);
     await click(settings.appUpdate.skip);
@@ -59,6 +74,7 @@ describe('update controls', () => {
     expect(container.querySelector('section')).toBeNull();
     await render(false);
     expect(container.textContent).toContain('已跳过版本 0.6.0');
+    expect(container.querySelector('a')?.textContent).toBe(settings.appUpdate.releaseNotes);
     await click(settings.appUpdate.install);
     expect(actions.at(-1)).toEqual({ action: 'install' });
   });
@@ -84,6 +100,7 @@ describe('update controls', () => {
     state.installing = true;
     await render(true);
     expect(container.querySelector('section')).not.toBeNull();
+    expect(container.querySelector('a')?.textContent).toBe(settings.appUpdate.releaseNotes);
     expect([...container.querySelectorAll('button')].every((button) => button.disabled)).toBe(true);
   });
   it.each(['error', 'blocked'] as const)('keeps a skipped version visible when the update is %s', async (phase) => {

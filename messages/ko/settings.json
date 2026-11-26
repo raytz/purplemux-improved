@@ -380,6 +380,7 @@
     "confirmDescription": "This closes the listed tabs and stops their processes. Session history and workspaces remain available for resume. Tabs with new activity will be skipped."
   },
   "appUpdate": {
+    "releaseNotes": "업데이트 내용 보기",
     "title": "Software updates",
     "current": "Current version {version}",
     "available": "Version {version} available",

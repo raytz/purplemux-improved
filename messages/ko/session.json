@@ -45,5 +45,14 @@
   "deleteOriginalDescription": "Delete the tool’s original session records and remove this session from this app’s history.",
   "deleteOriginalWarning": "This cannot be undone. The session can no longer be resumed, and associated subagent records may also be deleted.",
   "deletePermanently": "Delete permanently",
-  "deleteSessionInUse": "This session is in use. Close it before deleting its records."
+  "deleteSessionInUse": "This session is in use. Close it before deleting its records.",
+  "batch": {
+    "manage": "세션 관리",
+    "selectResults": "검색 결과 전체 선택",
+    "confirm": "선택한 세션 {count}개를 제거할까요?",
+    "original": "원본 세션 기록도 삭제",
+    "historyOnly": "Purplemux 기록만 제거합니다. 원본 기록은 유지됩니다.",
+    "result": "제거 {success}개, 실패 {failed}개."
+  },
+  "childAgents": "하위 에이전트 ({count})"
 }

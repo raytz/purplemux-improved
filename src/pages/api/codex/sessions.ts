@@ -25,7 +25,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     : DEFAULT_DAYS_BACK;
 
   try {
-    const { sessions, scannedDirs, scannedFiles } = await listCodexSessions({ cwd, daysBack });
+    const { sessions, scannedDirs, scannedFiles } = await listCodexSessions({ cwd, daysBack, includeChildren: req.query.includeChildren === 'true' });
     const hidden = await readHiddenSessions();
     return res.status(200).json({ sessions: sessions.filter((session) => !hidden.has(sessionHistoryKey('codex', session.sessionId))), scannedDirs, scannedFiles });
   } catch (err) {

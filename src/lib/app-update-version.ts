@@ -13,3 +13,8 @@ export const isNewerVersion = (latest: string, current: string): boolean => {
   }
   return false;
 };
+
+export const getUpdateReleaseNotesUrl = (latest: string | null, current: string): string | null =>
+  latest && isNewerVersion(latest, current)
+    ? `https://github.com/stirp/purplemux-improved/releases/tag/v${latest}`
+    : null;

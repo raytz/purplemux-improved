@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   hasError: false, isLoading: false,
 }));
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/hooks/use-layout', () => ({
   navigateToTabOrCreate: mocks.navigate,
   useLayoutStore: Object.assign((select: (state: unknown) => unknown) => select({ workspaceId: 'ws' }), {
@@ -21,10 +21,19 @@ vi.mock('@/hooks/use-agent-install-check', () => ({
 }));
 vi.mock('@/hooks/use-config-store', () => ({ default: { getState: () => ({ dangerouslySkipPermissions: false }) } }));
 vi.mock('@/lib/providers/codex/client', () => ({ fetchCodexLaunchCommand: async () => 'codex-launch' }));
+vi.mock('@/components/features/workspace/child-session-history', () => ({
+  default: ({ path }: { path: string }) => createElement('output', null, path),
+}));
 vi.mock('@/hooks/use-new-tab-sessions', () => ({ default: () => ({
-  sessions: [{ key: 'codex:s1', title: 'Retained task', updatedAt: 1,
+  sessions: [{ key: 'codex:s1', title: 'Retained task', updatedAt: 1, children: [
+    { key: 'codex:child', child: { parentId: 's1', label: 'Worker' }, target: { agentSessionId: 'child' }, jsonlPath: 'worker.jsonl',
+      children: [{ key: 'codex:grand', child: { parentId: 'child', label: 'Reviewer' }, target: { agentSessionId: 'grand' }, jsonlPath: 'review.jsonl' }] },
+  ],
     target: { workspaceId: 'ws', workspaceName: 'Project', workspaceDir: '/retained',
-      tabId: 'old-tab', providerId: 'codex', agentSessionId: 's1' } }],
+      tabId: 'old-tab', providerId: 'codex', agentSessionId: 's1' } },
+    { key: 'claude:s1', title: '', updatedAt: 2,
+      target: { workspaceId: 'ws', workspaceName: 'Project', workspaceDir: '/other',
+        tabId: '', providerId: 'claude', agentSessionId: 's1' } }],
   isLoading: mocks.isLoading, isValidating: false, hasError: mocks.hasError, refresh: mocks.refresh,
 }) }));
 import NewTabPicker from '@/components/features/workspace/new-tab-picker';
@@ -72,6 +81,67 @@ const deferred = () => {
 };
 
 describe('new tab picker', () => {
+  it.each([false, true])('enters nested agents and goes back to the picker without a launch, mobile=%s', async mobile => {
+    await render(mobile);
+    await click('childAgents');
+    await click('Worker');
+    expect(container.querySelector('output')?.textContent).toBe('worker.jsonl');
+    await click('Reviewer');
+    expect(container.querySelector('output')?.textContent).toBe('review.jsonl');
+    await click('back');
+    expect(container.querySelector('output')?.textContent).toBe('worker.jsonl');
+    await click('back');
+    await click('back');
+    expect(container.querySelector('[aria-label="codex: Retained task"]')).toBeTruthy();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+  it.each([false, true])('selects only visible results and clears selection when the search changes, mobile=%s', async mobile => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await render(mobile);
+    await click('batch.manage');
+    await click('codex: Retained task');
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    const input = container.querySelector<HTMLInputElement>('input:not([type=checkbox])')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'noMessage');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.textContent).toContain('delete (0)');
+    await act(async () => container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());
+    await click('delete (1)');
+    expect(container.textContent).not.toContain('Retained task');
+    await click('cancel');
+    expect(fetch).not.toHaveBeenCalled();
+    await click('close');
+    expect(container.querySelector('[aria-pressed]')).toBeNull();
+  });
+
+  it('keeps a blocked session selected and retries only that provider and ID', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({ ok: true, status: 204 })
+      .mockResolvedValueOnce({ ok: false, status: 409 }).mockResolvedValueOnce({ ok: true, status: 204 });
+    vi.stubGlobal('fetch', fetch);
+    await render();
+    await click('batch.manage');
+    const check = () => act(async () => container.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());
+    await check();
+    await click('delete (2)');
+    await click('deletePermanently');
+    expect(container.textContent).not.toContain('Retained task');
+    expect(container.textContent).toContain('deleteSessionInUse');
+    expect(container.querySelector('[aria-label="claude: noMessage"]')?.getAttribute('aria-pressed')).toBe('true');
+    await click('delete (1)');
+    await check();
+    await click('deleteHistory');
+    expect(fetch.mock.calls.map(([, init]) => JSON.parse(init.body))).toEqual([
+      { provider: 'codex', sessionId: 's1', deleteOriginal: true },
+      { provider: 'claude', sessionId: 's1', deleteOriginal: true },
+      { provider: 'claude', sessionId: 's1', deleteOriginal: false },
+    ]);
+    expect(mocks.close).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('empty.noSession');
+  });
   it.each([false, true])('shows applications and sessions immediately, mobile=%s', async (mobile) => {
     await render(mobile);
     expect(container.textContent).toContain('Retained task');

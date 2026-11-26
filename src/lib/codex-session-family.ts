@@ -7,6 +7,7 @@ import readline from 'readline';
 interface ICodexSessionIdentity {
   id?: string;
   source?: unknown;
+  thread_source?: unknown;
   parent_thread_id?: string;
   forked_from_id?: string;
 }
@@ -19,12 +20,16 @@ export const isCodexSubagent = (source: unknown): boolean => {
   return !!object && 'subagent' in object;
 };
 
-const parentId = (meta: ICodexSessionIdentity): string | null => {
-  if (!isCodexSubagent(meta.source)) return null;
-  const subagent = asObject(asObject(meta.source)?.subagent);
-  const spawn = asObject(subagent?.thread_spawn);
+// Navigation can use the explicit thread kind even when the detailed source is missing.
+export const codexChildInfo = (meta: ICodexSessionIdentity & { agent_nickname?: unknown; agent_role?: unknown }) => {
+  if (meta.thread_source !== 'subagent' && !isCodexSubagent(meta.source)) return undefined;
+  const kind = asObject(meta.source)?.subagent;
+  const spawn = asObject(asObject(kind)?.thread_spawn);
   const parent = meta.parent_thread_id ?? spawn?.parent_thread_id ?? meta.forked_from_id;
-  return typeof parent === 'string' ? parent : null;
+  const name = meta.agent_nickname ?? spawn?.agent_nickname;
+  const role = meta.agent_role ?? spawn?.agent_role ?? (typeof kind === 'string' ? kind : null);
+  return { parentId: typeof parent === 'string' ? parent : null,
+    label: [name, role].filter(value => typeof value === 'string' && value).join(' · ') };
 };
 
 const readIdentity = async (file: string): Promise<ICodexSessionIdentity | null> => {
@@ -62,7 +67,7 @@ export const collectCodexSessionFamily = async (sessionId: string): Promise<stri
       else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
         const meta = await readIdentity(file);
         if (!meta || typeof meta.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(meta.id)) continue;
-        const parent = parentId(meta);
+        const parent = isCodexSubagent(meta.source) && codexChildInfo(meta)?.parentId;
         if (!parent) continue;
         if (!children.has(parent)) children.set(parent, new Set());
         children.get(parent)!.add(meta.id);

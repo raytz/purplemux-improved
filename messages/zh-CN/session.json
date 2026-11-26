@@ -45,5 +45,14 @@
   "deleteOriginalDescription": "删除对应工具的原始会话记录，并从本项目历史列表移除。",
   "deleteOriginalWarning": "此操作不可撤销，该会话将无法恢复。会话关联的子代理记录也可能被删除。",
   "deletePermanently": "永久删除",
-  "deleteSessionInUse": "该会话正在使用，请先关闭对应会话后再删除。"
+  "deleteSessionInUse": "该会话正在使用，请先关闭对应会话后再删除。",
+  "batch": {
+    "manage": "批量管理",
+    "selectResults": "全选搜索结果",
+    "confirm": "移除选中的 {count} 个会话？",
+    "original": "同时删除原始会话记录",
+    "historyOnly": "仅移除 Purplemux 历史，原始记录会保留。",
+    "result": "已移除 {success} 个会话，失败 {failed} 个。"
+  },
+  "childAgents": "子代理 ({count})"
 }
