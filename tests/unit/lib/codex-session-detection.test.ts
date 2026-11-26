@@ -41,6 +41,38 @@ describe('codex watchSessionsDir', () => {
 });
 
 describe('findCodexSessionById outside the recent window', () => {
+  it.each(['year', 'month', 'day'])('follows a linked historical %s directory', async (level) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-codex-linked-session-'));
+    const sessionsRoot = path.join(root, 'sessions');
+    const target = path.join(root, 'target');
+    const components = ['2024', '12', '31'];
+    const linkIndex = ['year', 'month', 'day'].indexOf(level);
+    const parent = path.join(sessionsRoot, ...components.slice(0, linkIndex));
+    const nested = components.slice(linkIndex + 1);
+    await fs.mkdir(parent, { recursive: true });
+    await fs.mkdir(path.join(target, ...nested), { recursive: true });
+    await fs.symlink(target, path.join(parent, components[linkIndex]));
+    const sessionId = '66666666-6666-4666-8666-666666666666';
+    const jsonlPath = path.join(sessionsRoot, ...components, `rollout-${sessionId}.jsonl`);
+    await fs.writeFile(jsonlPath, JSON.stringify({ type: 'session_meta', payload: { id: sessionId } }));
+    expect((await findCodexSessionById(sessionId, { sessionsRoot, now: new Date('2026-05-02T12:00:00') }))?.jsonlPath).toBe(jsonlPath);
+  });
+
+  it('skips broken and non-directory links while searching older directories', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-codex-broken-links-'));
+    const sessionsRoot = path.join(root, 'sessions');
+    const dayDir = path.join(sessionsRoot, '2023', '01', '01');
+    await fs.mkdir(dayDir, { recursive: true });
+    const ordinaryFile = path.join(root, 'file');
+    await fs.writeFile(ordinaryFile, 'file');
+    await fs.symlink(path.join(root, 'missing'), path.join(sessionsRoot, '2025'));
+    await fs.symlink(ordinaryFile, path.join(sessionsRoot, '2024'));
+    const sessionId = '77777777-7777-4777-8777-777777777777';
+    const jsonlPath = path.join(dayDir, `rollout-${sessionId}.jsonl`);
+    await fs.writeFile(jsonlPath, JSON.stringify({ type: 'session_meta', payload: { id: sessionId } }));
+    expect((await findCodexSessionById(sessionId, { sessionsRoot, now: new Date('2026-05-02T12:00:00') }))?.jsonlPath).toBe(jsonlPath);
+  });
+
   it('finds a long-lived session across years and reads its current turn', async () => {
     const sessionsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-codex-old-session-'));
     const dayDir = path.join(sessionsRoot, '2024', '12', '31');

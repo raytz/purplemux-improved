@@ -179,10 +179,18 @@ const findSessionInDir = async (dir: string, sessionId: string): Promise<ICodexS
 
 const datedDirectories = async (dir: string, pattern: RegExp): Promise<string[]> => {
   try {
-    return (await fs.readdir(dir, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory() && pattern.test(entry.name))
-      .map((entry) => entry.name)
-      .sort((a, b) => b.localeCompare(a));
+    const entries = (await fs.readdir(dir, { withFileTypes: true }))
+      .filter((entry) => pattern.test(entry.name));
+    const names = await Promise.all(entries.map(async (entry) => {
+      if (entry.isDirectory()) return entry.name;
+      if (!entry.isSymbolicLink()) return null;
+      try {
+        return (await fs.stat(path.join(dir, entry.name))).isDirectory() ? entry.name : null;
+      } catch {
+        return null;
+      }
+    }));
+    return names.filter((name): name is string => name !== null).sort((a, b) => b.localeCompare(a));
   } catch {
     return [];
   }
