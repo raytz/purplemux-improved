@@ -162,33 +162,64 @@ export const findLatestCodexSessionForCwd = async (
   return null;
 };
 
+const findSessionInDir = async (dir: string, sessionId: string): Promise<ICodexSessionMeta | null> => {
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    if (!name.endsWith('.jsonl') || !name.includes(sessionId)) continue;
+    const meta = await readCodexSessionMeta(path.join(dir, name));
+    if (meta?.sessionId === sessionId) return withJsonlMtime(meta);
+  }
+  return null;
+};
+
+const datedDirectories = async (dir: string, pattern: RegExp): Promise<string[]> => {
+  try {
+    return (await fs.readdir(dir, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory() && pattern.test(entry.name))
+      .map((entry) => entry.name)
+      .sort((a, b) => b.localeCompare(a));
+  } catch {
+    return [];
+  }
+};
+
 export const findCodexSessionById = async (
   sessionId: string,
   {
     sessionsRoot = SESSIONS_ROOT,
-    daysBack = SESSION_SCAN_DAYS,
+    daysBack,
     now = new Date(),
   }: IFindLatestCodexSessionOptions = {},
 ): Promise<ICodexSessionMeta | null> => {
-  for (let i = 0; i < daysBack; i++) {
+  const checked = new Set<string>();
+  for (let i = 0; i < (daysBack ?? SESSION_SCAN_DAYS); i++) {
     const date = new Date(now);
     date.setDate(now.getDate() - i);
     const dir = dayDirPath(sessionsRoot, date);
-
-    let names: string[];
-    try {
-      names = await fs.readdir(dir);
-    } catch {
-      continue;
-    }
-
-    const matchingNames = names.filter((name) => name.endsWith('.jsonl') && name.includes(sessionId));
-    for (const name of matchingNames) {
-      const meta = await readCodexSessionMeta(path.join(dir, name));
-      if (meta?.sessionId === sessionId) return withJsonlMtime(meta);
-    }
+    checked.add(dir);
+    const meta = await findSessionInDir(dir, sessionId);
+    if (meta) return meta;
   }
 
+  if (daysBack !== undefined) return null;
+
+  for (const year of await datedDirectories(sessionsRoot, /^\d{4}$/)) {
+    const yearDir = path.join(sessionsRoot, year);
+    for (const month of await datedDirectories(yearDir, /^(0[1-9]|1[0-2])$/)) {
+      const monthDir = path.join(yearDir, month);
+      for (const day of await datedDirectories(monthDir, /^(0[1-9]|[12]\d|3[01])$/)) {
+        const dir = path.join(monthDir, day);
+        if (checked.has(dir)) continue;
+        const meta = await findSessionInDir(dir, sessionId);
+        if (meta) return meta;
+      }
+    }
+  }
   return null;
 };
 

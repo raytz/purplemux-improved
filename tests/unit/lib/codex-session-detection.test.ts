@@ -9,6 +9,7 @@ import {
   watchSessionsDir,
 } from '@/lib/providers/codex/session-detection';
 import type { ISessionInfo } from '@/types/timeline';
+import { createCodexParser } from '@/lib/session-parser-codex';
 
 describe('codex watchSessionsDir', () => {
   it('forwards matching hook session-info events and unsubscribes on stop', () => {
@@ -36,6 +37,52 @@ describe('codex watchSessionsDir', () => {
     watcher.stop();
     codexHookEvents.emit('session-info', 'target-session', info);
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('findCodexSessionById outside the recent window', () => {
+  it('finds a long-lived session across years and reads its current turn', async () => {
+    const sessionsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-codex-old-session-'));
+    const dayDir = path.join(sessionsRoot, '2024', '12', '31');
+    await fs.mkdir(dayDir, { recursive: true });
+    const sessionId = '44444444-4444-4444-8444-444444444444';
+    const jsonlPath = path.join(dayDir, `rollout-${sessionId}.jsonl`);
+    await fs.writeFile(jsonlPath, [
+      { type: 'session_meta', payload: { id: sessionId, cwd: '/tmp/project' } },
+      { type: 'event_msg', payload: { type: 'user_message', message: 'question' } },
+      { type: 'event_msg', payload: { type: 'agent_message', message: 'answer' } },
+    ].map((record) => JSON.stringify(record)).join('\n') + '\n');
+
+    const options = { sessionsRoot, now: new Date('2026-05-02T12:00:00') };
+    const session = await findCodexSessionById(sessionId, options);
+    expect(session?.jsonlPath).toBe(jsonlPath);
+    const turn = await createCodexParser(session!.jsonlPath).parseTurn();
+    expect(turn.entries).toMatchObject([
+      { type: 'user-message', text: 'question' },
+      { type: 'assistant-message', markdown: 'answer' },
+    ]);
+    expect(await findCodexSessionById(sessionId, { ...options, daysBack: 30 })).toBeNull();
+  });
+
+  it('checks session metadata, skips invalid candidates and prefers recent matches', async () => {
+    const sessionsRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'purplemux-codex-identity-'));
+    const recentDir = path.join(sessionsRoot, '2026', '05', '02');
+    const invalidDir = path.join(sessionsRoot, '2025', '05', '02');
+    const oldDir = path.join(sessionsRoot, '2024', '05', '02');
+    await Promise.all([recentDir, invalidDir, oldDir].map((dir) => fs.mkdir(dir, { recursive: true })));
+    const sessionId = '55555555-5555-4555-8555-555555555555';
+    const candidate = `rollout-${sessionId}.jsonl`;
+    const oldPath = path.join(oldDir, candidate);
+    await fs.writeFile(path.join(recentDir, candidate), JSON.stringify({ type: 'session_meta', payload: { id: 'other' } }));
+    await fs.writeFile(path.join(invalidDir, candidate), '{invalid');
+    await fs.writeFile(oldPath, JSON.stringify({ type: 'session_meta', payload: { id: sessionId } }));
+    const options = { sessionsRoot, now: new Date('2026-05-02T12:00:00') };
+    expect((await findCodexSessionById(sessionId, options))?.jsonlPath).toBe(oldPath);
+    expect(await findCodexSessionById('missing', options)).toBeNull();
+
+    const recentPath = path.join(recentDir, `new-${sessionId}.jsonl`);
+    await fs.writeFile(recentPath, JSON.stringify({ type: 'session_meta', payload: { id: sessionId } }));
+    expect((await findCodexSessionById(sessionId, options))?.jsonlPath).toBe(recentPath);
   });
 });
 
