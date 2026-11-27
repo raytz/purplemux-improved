@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import http from 'http';
 import { createLogger } from '@/lib/logger';
+import { withBase } from '@/lib/base-path';
 
 const log = createLogger('lock');
 
@@ -46,25 +47,35 @@ const isPidAlive = (pid: number): boolean => {
 
 const checkHealth = (port: number): Promise<boolean> =>
   new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/health`, { timeout: 2000 }, (res) => {
-      let body = '';
-      res.on('data', (chunk: Buffer) => {
-        body += chunk;
+    // 子路径部署时健康检查接口带 basePath 前缀；同时尝试无前缀路径，
+    // 避免升级前后的实例被误判为「不是 purplemux」而错误抢占锁。
+    const paths = ['/api/health', withBase('/api/health')];
+    const tryPath = (index: number) => {
+      if (index >= paths.length) {
+        resolve(false);
+        return;
+      }
+      const req = http.get(`http://127.0.0.1:${port}${paths[index]}`, { timeout: 2000 }, (res) => {
+        let body = '';
+        res.on('data', (chunk: Buffer) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            resolve(data.app === 'purplemux');
+          } catch {
+            tryPath(index + 1);
+          }
+        });
       });
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(body);
-          resolve(data.app === 'purplemux');
-        } catch {
-          resolve(false);
-        }
+      req.on('error', () => tryPath(index + 1));
+      req.on('timeout', () => {
+        req.destroy();
+        tryPath(index + 1);
       });
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(false);
-    });
+    };
+    tryPath(0);
   });
 
 const removeStaleLock = async (): Promise<void> => {

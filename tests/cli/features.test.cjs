@@ -258,6 +258,29 @@ for (const [binary, entry] of Object.entries(require('../../package.json').bin))
       } finally { fs.rmSync(dir, { recursive: true }); }
     });
 
+    test('requests carry the base path prefix published by the server', async () => {
+      const dir = path.join(tmp, '.purplemux');
+      fs.mkdirSync(dir);
+      fs.writeFileSync(path.join(dir, 'base-path'), '/purplemux');
+      fs.writeFileSync(path.join(dir, 'port'), String(port));
+      fs.writeFileSync(path.join(dir, 'cli-token'), 'fallback-token');
+      try {
+        const result = await cli(['workspace', 'list'], '', { PMUX_PORT: '', PMUX_TOKEN: '' });
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(requests.at(-1).url, '/purplemux/api/workspace');
+      } finally { fs.rmSync(dir, { recursive: true }); }
+    });
+
+    test('requests stay on the root path when no base path is published', async () => {
+      // 独立的 HOME，避免与并行用例里发布的 base-path 互相干扰。
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pmux-cli-nobase-'));
+      try {
+        const result = await cli(['workspace', 'list'], '', { HOME: home, PMUX_PORT: String(port), PMUX_TOKEN: 'test-token' });
+        assert.equal(result.code, 0, result.stderr);
+        assert.equal(requests.at(-1).url, '/api/workspace');
+      } finally { fs.rmSync(home, { recursive: true, force: true }); }
+    });
+
     test('attachment-only queue messages retain defaults without requiring text', async () => {
       const attachments = [{ path: '/uploads/file.pdf', filename: 'file.pdf' }];
       const result = await cli(['queue', 'add', '-w', 'ws-example', '--tab-id', 'tab-1', '--id', 'attachment-1', '--attachments', JSON.stringify(attachments)]);

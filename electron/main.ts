@@ -28,6 +28,30 @@ const closeLocalBrowserBridge = async () => {
 
 const isDev = process.env.NODE_ENV === 'development';
 const devUrl = process.env.ELECTRON_DEV_URL;
+
+/**
+ * 子路径部署时站点挂在 basePath 下（Electron 打包的 standalone 产物同样固化了
+ * basePath）。窗口地址与健康检查都要带上前缀，否则会 404。
+ */
+const readBasePath = (): string => {
+  const appDir = process.env.__PMUX_APP_DIR_UNPACKED || process.env.__PMUX_APP_DIR || process.cwd();
+  for (const file of [
+    path.join(appDir, '.next', 'standalone', '.next', 'required-server-files.json'),
+    path.join(appDir, '.next', 'required-server-files.json'),
+  ]) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const basePath = parsed?.config?.basePath;
+      if (typeof basePath === 'string' && basePath && basePath !== '/') {
+        return basePath.startsWith('/') ? basePath.replace(/\/+$/, '') : `/${basePath.replace(/\/+$/, '')}`;
+      }
+    } catch {
+      // 产物不存在：按根路径处理
+    }
+  }
+  return '';
+};
+let basePath = '';
 const desktopAutostart = createDesktopAutostart({
   platform: process.platform,
   packaged: app.isPackaged,
@@ -279,7 +303,7 @@ const setServerLaunchAgentEnabled = async (enabled: boolean): Promise<IServerLau
     if (!port) return;
     for (const win of takeoverWindows) {
       if (win.isDestroyed()) continue;
-      win.loadURL(`http://localhost:${port}`);
+      win.loadURL(`http://localhost:${port}${basePath}`);
       clearSplashHistory(win);
     }
   };
@@ -723,7 +747,7 @@ interface IServerHealth {
 
 const getServerHealth = (port: number): Promise<IServerHealth | null> =>
   new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/health`, { timeout: 1500 }, (res) => {
+    const req = http.get(`http://127.0.0.1:${port}${basePath}/api/health`, { timeout: 1500 }, (res) => {
       let body = '';
       res.on('data', (chunk: Buffer) => {
         body += chunk.toString('utf-8');
@@ -897,7 +921,7 @@ const handleSwitchToLocal = async () => {
     const port = await getManagedServerPort() ?? await startLocalServer();
     localPort = port;
     await exposeLocalBrowserBridge();
-    const url = `http://localhost:${port}`;
+    const url = `http://localhost:${port}${basePath}`;
     for (const w of windows) w.loadURL(url);
   } catch (err) {
     console.error('[electron] Failed to start local server:', err);
@@ -1123,6 +1147,8 @@ const prepareLocalServerEnv = () => {
   const appPath = app.getAppPath();
   process.env.__PMUX_APP_DIR = isDev ? process.cwd() : appPath;
   process.env.__PMUX_APP_DIR_UNPACKED = isDev ? process.cwd() : appPath.replace('app.asar', 'app.asar.unpacked');
+  // 打包进来的 standalone 产物固化了 basePath，窗口地址必须带上同一前缀。
+  basePath = readBasePath();
 };
 
 // --- Bootstrap ---
@@ -1173,7 +1199,7 @@ const bootstrap = async () => {
     const port = existingPort ?? await startLocalServer();
     if (existingPort) localPort = existingPort;
     await exposeLocalBrowserBridge();
-    win.loadURL(`http://localhost:${port}`);
+    win.loadURL(`http://localhost:${port}${basePath}`);
     clearSplashHistory(win);
   }
 

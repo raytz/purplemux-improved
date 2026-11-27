@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseJsonlContent } from '@/lib/session-parser';
 import { matchesInputMessage } from '@/lib/input-message-match';
 import { parseCodexContent } from '@/lib/session-parser-codex';
@@ -49,5 +49,43 @@ describe('Claude image input receipts', () => {
     expect(matchesInputMessage(entry, message, 1000)).toBe(true);
     expect(matchesInputMessage(entry, { ...message, attachments: [{ ...image, imageHash: 'different' }] }, 1000)).toBe(false);
     expect(matchesInputMessage(entry, { ...message, attachments: [image, image] }, 1000)).toBe(false);
+  });
+});
+
+describe('sub-path deployment image receipts', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('counts prefixed upload images when stripping [Image #N] markers', () => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/purplemux');
+    const image = { path: path.join(UPLOADS_DIR, 'ws', 'tab', 'image.png'), filename: 'image.png' };
+    const entry = {
+      id: 'native', type: 'user-message' as const, timestamp: 2000,
+      text: '[Image #1] hello',
+      images: ['/purplemux/api/uploads/ws/tab/image.png'],
+    };
+    expect(matchesInputMessage(entry, { id: 'q', text: 'hello', attachments: [image] }, 1000)).toBe(true);
+    expect(matchesInputMessage(entry, { id: 'q', text: 'other', attachments: [image] }, 1000)).toBe(false);
+  });
+
+  it('matches a prefixed image-only receipt', () => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/purplemux');
+    const image = { path: path.join(UPLOADS_DIR, 'ws', 'tab', 'image.png'), filename: 'image.png' };
+    const entry = {
+      id: 'native', type: 'user-message' as const, timestamp: 2000,
+      text: '[Image #1]',
+      images: ['/purplemux/api/uploads/ws/tab/image.png'],
+    };
+    expect(matchesInputMessage(entry, { id: 'q', text: '', attachments: [image] }, 1000)).toBe(true);
+  });
+
+  it('keeps matching root-path images working when no sub-path is configured', () => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '');
+    const image = { path: path.join(UPLOADS_DIR, 'ws', 'tab', 'image.png'), filename: 'image.png' };
+    const entry = {
+      id: 'native', type: 'user-message' as const, timestamp: 2000,
+      text: '[Image #1] hello',
+      images: ['/api/uploads/ws/tab/image.png'],
+    };
+    expect(matchesInputMessage(entry, { id: 'q', text: 'hello', attachments: [image] }, 1000)).toBe(true);
   });
 });

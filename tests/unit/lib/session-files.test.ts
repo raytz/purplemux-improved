@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, symlink, rm, rename, unlink, open, type File
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { openSessionFile, renderSessionFileText } from '@/lib/session-files';
+import { getSessionFileCsp, openSessionFile, renderSessionFileText } from '@/lib/session-files';
 import { buildSessionFileUrl } from '@/lib/session-file-url';
 import { parseEditorFileLink } from '@/lib/editor-url';
 import { getOpenedFilePath } from '@/lib/opened-file-path';
@@ -33,7 +33,7 @@ beforeAll(async () => {
   await symlink(path.join(root, '中文 #?.md'), path.join(root, 'inside.md'));
 });
 afterAll(async () => { await rm(directory, { recursive: true, force: true }); });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 
 describe('session file path boundary', () => {
   it('fails closed and releases the file when descriptor verification is unavailable', async () => {
@@ -120,5 +120,20 @@ describe('browser file content and URL', () => {
     expect(html).toContain('<span id="L2">&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>');
     expect(html).toContain('width=device-width');
+  });
+
+  it('allows only the root session-file path in the preview CSP', () => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '');
+    const csp = getSessionFileCsp('example.com');
+    expect(csp).toContain('http://example.com/api/session-files/');
+    expect(csp).toContain('https://example.com/api/session-files/');
+    expect(csp).not.toContain('/purplemux');
+  });
+
+  it('allows the sub-path prefixed session-file path in the preview CSP', () => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/purplemux');
+    const csp = getSessionFileCsp('example.com');
+    expect(csp).toContain('http://example.com/purplemux/api/session-files/');
+    expect(csp).toContain('https://example.com/purplemux/api/session-files/');
   });
 });

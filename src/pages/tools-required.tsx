@@ -12,6 +12,7 @@ import OpenAIIcon from '@/components/icons/openai-icon';
 import { useRuntimePreflight } from '@/hooks/use-runtime-preflight';
 import { isRuntimeOk } from '@/types/preflight';
 import type { IRuntimePreflightResult } from '@/types/preflight';
+import { withBase } from '@/lib/base-path';
 
 const getNextInstall = (
   status: IRuntimePreflightResult,
@@ -34,14 +35,17 @@ const getNextInstall = (
 const ToolsRequiredPage = () => {
   const t = useTranslations('toolsRequired');
   const router = useRouter();
-  const from = (router.query.from as string) || '/';
+  // 只接受站内绝对路径，避免跳到站外；子路径部署时前缀由 withBase 补上。
+  const rawFrom = (router.query.from as string) || '/';
+  const from = /^\/(?!\/)/.test(rawFrom) && !/[\x00-\x20\x7f\\]/.test(rawFrom) ? rawFrom : '/';
   const { status, checking, recheck } = useRuntimePreflight();
   const [installTarget, setInstallTarget] = useState<{ command: string; label: string } | null>(null);
   const [codexGuideOpen, setCodexGuideOpen] = useState(false);
 
   useEffect(() => {
     if (status && isRuntimeOk(status)) {
-      window.location.href = from;
+      // from 来自服务端 resolvedUrl（不含 basePath），子路径部署时需要补前缀。
+      window.location.href = withBase(from);
     }
   }, [status, from]);
 

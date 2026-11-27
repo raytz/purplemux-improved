@@ -33,14 +33,12 @@ for (const f of ['CLAUDE.md', 'AGENTS.md']) {
 const { readBasePath } = require('./read-base-path.cjs');
 const basePath = readBasePath(root);
 if (basePath) {
-  const fs = require('fs');
-  const path = require('path');
   const walk = (dir) => fs.existsSync(dir) ? fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const full = path.join(dir, e.name);
     return e.isDirectory() ? walk(full) : (e.name.endsWith('.css') ? [full] : []);
   }) : [];
   let patched = 0;
-  for (const full of walk(path.join(process.cwd(), '.next', 'static'))) {
+  for (const full of walk(path.join(root, '.next', 'static'))) {
     const css = fs.readFileSync(full, 'utf8');
     if (!css.includes('url(/fonts/')) continue;
     fs.writeFileSync(full, css.split('url(/fonts/').join(`url(${basePath}/fonts/`));

@@ -2,6 +2,7 @@ import { constants } from 'node:fs';
 import { open, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { getOpenedFilePath } from '@/lib/opened-file-path';
+import { withBase } from '@/lib/base-path';
 
 export const MAX_TEXT_PREVIEW_BYTES = 2 * 1024 * 1024;
 
@@ -76,7 +77,10 @@ export const getSessionFileType = (name: string) => {
 
 export const getSessionFileCsp = (host: string): string => {
   const { host: safeHost } = new URL(`http://${host}`);
-  const resources = `http://${safeHost}/api/session-files/ https://${safeHost}/api/session-files/`;
+  // 子路径部署时预览地址带 basePath 前缀，HTML/SVG 里按相对路径引用的
+  // 同目录 CSS、图片、字体会请求带前缀的资源，CSP 必须允许同一前缀。
+  const prefix = withBase('/api/session-files/');
+  const resources = `http://${safeHost}${prefix} https://${safeHost}${prefix}`;
   // Same-origin keeps SameSite cookies on relative assets; scripts remain disabled.
   return `sandbox allow-same-origin; default-src 'none'; style-src ${resources} 'unsafe-inline'; img-src ${resources} data: blob:; font-src ${resources}; base-uri 'none'; form-action 'none'; frame-ancestors 'self'`;
 };

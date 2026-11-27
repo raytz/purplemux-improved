@@ -10,27 +10,59 @@ const PORT_BUSY_GRACE_MS = 30_000;
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * 子路径部署时健康检查接口带 basePath 前缀。依次尝试无前缀与带前缀路径，
+ * 避免把运行正常的实例误判为不可用。
+ */
+const healthPaths = (): string[] => {
+  const appDir = process.env.__PMUX_APP_DIR_UNPACKED || process.env.__PMUX_APP_DIR || process.cwd();
+  for (const file of [
+    path.join(appDir, '.next', 'standalone', '.next', 'required-server-files.json'),
+    path.join(appDir, '.next', 'required-server-files.json'),
+  ]) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+      const basePath = parsed?.config?.basePath;
+      if (typeof basePath === 'string' && basePath && basePath !== '/') {
+        const prefix = basePath.startsWith('/') ? basePath.replace(/\/+$/, '') : `/${basePath.replace(/\/+$/, '')}`;
+        return ['/api/health', `${prefix}/api/health`];
+      }
+    } catch {
+      // 产物不存在：按根路径处理
+    }
+  }
+  return ['/api/health'];
+};
+
 const isPurplemuxServerHealthy = (port: number): Promise<boolean> =>
   new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/api/health`, { timeout: 1500 }, (res) => {
-      let body = '';
-      res.on('data', (chunk: Buffer) => {
-        body += chunk.toString('utf-8');
+    const paths = healthPaths();
+    const tryPath = (index: number) => {
+      if (index >= paths.length) {
+        resolve(false);
+        return;
+      }
+      const req = http.get(`http://127.0.0.1:${port}${paths[index]}`, { timeout: 1500 }, (res) => {
+        let body = '';
+        res.on('data', (chunk: Buffer) => {
+          body += chunk.toString('utf-8');
+        });
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body) as { app?: string };
+            resolve(data.app === 'purplemux');
+          } catch {
+            tryPath(index + 1);
+          }
+        });
       });
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(body) as { app?: string };
-          resolve(data.app === 'purplemux');
-        } catch {
-          resolve(false);
-        }
+      req.on('error', () => tryPath(index + 1));
+      req.on('timeout', () => {
+        req.destroy();
+        tryPath(index + 1);
       });
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(false);
-    });
+    };
+    tryPath(0);
   });
 
 const getExistingLocalServerPort = async (): Promise<number | null> => {

@@ -19,7 +19,16 @@ const readFileOrNull = (file) => {
 
 const PORT = process.env.PMUX_PORT || readFileOrNull(path.join(os.homedir(), '.purplemux', 'port'));
 const TOKEN = process.env.PMUX_TOKEN || readFileOrNull(path.join(os.homedir(), '.purplemux', 'cli-token'));
+// 子路径部署时接口路径带 basePath 前缀，由服务端启动时写入 ~/.purplemux/base-path。
+const BASE_PATH = readFileOrNull(path.join(os.homedir(), '.purplemux', 'base-path')) || '';
 const BASE = `http://localhost:${PORT}`;
+
+const apiPath = (apiPathname) => {
+  if (!BASE_PATH) return apiPathname;
+  if (!apiPathname.startsWith('/')) return apiPathname;
+  if (apiPathname === BASE_PATH || apiPathname.startsWith(`${BASE_PATH}/`)) return apiPathname;
+  return `${BASE_PATH}${apiPathname}`;
+};
 
 const die = (msg) => {
   process.stderr.write(`error: ${msg}\n`);
@@ -36,7 +45,7 @@ const out = (body) => {
 };
 
 const api = async (method, path, data) => {
-  const url = `${BASE}${path}`;
+  const url = `${BASE}${apiPath(path)}`;
   const opts = {
     method,
     headers: { 'X-Pmux-Token': TOKEN, 'Content-Type': 'application/json' },
@@ -54,7 +63,7 @@ const api = async (method, path, data) => {
 };
 
 const apiRaw = async (method, path) => {
-  const url = `${BASE}${path}`;
+  const url = `${BASE}${apiPath(path)}`;
   const resp = await fetch(url, {
     method,
     headers: { 'X-Pmux-Token': TOKEN },
@@ -246,7 +255,7 @@ const cmdTabBrowser = async (args) => {
 
 const cmdApiGuide = async () => {
   requireEnv();
-  const resp = await fetch(`${BASE}/api/cli/api-guide`, {
+  const resp = await fetch(`${BASE}${apiPath('/api/cli/api-guide')}`, {
     headers: { 'X-Pmux-Token': TOKEN },
   });
   if (!resp.ok) die(`HTTP ${resp.status}`);
@@ -264,7 +273,7 @@ const cmdSkill = (args) => {
 };
 
 const upload = async (endpoint, data, headers) => {
-  const resp = await fetch(`${BASE}${endpoint}`, {
+  const resp = await fetch(`${BASE}${apiPath(endpoint)}`, {
     method: 'POST', headers: { ...headers, 'X-Pmux-Token': TOKEN }, body: data,
   });
   const body = resp.headers.get('content-type')?.includes('json') ? await resp.json() : null;

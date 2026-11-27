@@ -4,7 +4,6 @@ import { createServer, request as httpRequest } from 'http';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { createConnection } from 'net';
 import path from 'path';
-import fs from 'fs';
 import next from 'next';
 import { WebSocketServer } from 'ws';
 import { verifySessionToken, SESSION_COOKIE, extractCookie } from './src/lib/auth';
@@ -103,36 +102,56 @@ const handleWsUpgrade = (
 
 const NO_AUTH_WS_PATHS = new Set(['/api/install']);
 
-// 站点挂到子路径时（PURPLEMUX_BASE_PATH=/purplemux），Next 的页面/静态资源仍需要
+// 站点挂到子路径时（basePath=/purplemux），Next 的页面/静态资源仍需要
 // 完整路径，但本文件里对 /api/* 与 /_next/* 的匹配必须用剥离前缀后的路径。
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { readBasePath } = require('./scripts/read-base-path.cjs') as {
-  readBasePath: (root?: string) => string;
+const { resolveBasePath } = require('./scripts/read-base-path.cjs') as {
+  resolveBasePath: (appDir?: string, options?: { useBuildArtifact?: boolean; artifactDir?: string }) => {
+    basePath: string;
+    baked: string | undefined;
+    configured: string;
+  };
 };
 
 /**
- * basePath 由 Next 在构建期固化；运行期必须以构建产物为准，
- * 否则会出现「WebSocket 用新前缀、页面路由用旧前缀」的错配。
+ * 实际运行的应用目录：生产为安装目录（npm 包只发布 .next/standalone/），
+ * 开发为仓库根目录。全局命令的 cwd 不一定是安装目录，所以不能只看 process.cwd()。
+ *
+ * Electron 下配置文件在 asar 内、standalone 产物在 asar.unpacked，
+ * 因此两者可能不是同一个目录。
  */
-const bakedBasePath = (): string | undefined => {
-  try {
-    const file = path.join(process.cwd(), '.next', 'required-server-files.json');
-    const config = JSON.parse(fs.readFileSync(file, 'utf8')).config;
-    return typeof config?.basePath === 'string' ? config.basePath : undefined;
-  } catch {
-    return undefined;
-  }
-};
+const configDir = (): string => process.env.__PMUX_APP_DIR || process.cwd();
+const artifactDir = (): string =>
+  process.env.__PMUX_APP_DIR_UNPACKED || process.env.__PMUX_APP_DIR || process.cwd();
 
-const baked = bakedBasePath();
-const configured = readBasePath(process.cwd());
-if (baked !== undefined && configured !== baked) {
+/**
+ * basePath 由 Next 在构建期固化；运行期必须以「实际运行的构建产物」为准，
+ * 否则会出现「WebSocket 用新前缀、Next 页面路由用旧前缀」的错配。
+ *
+ * 开发期不读构建产物：Next 会重新读取 next.config，此时引用上一次构建的
+ * 产物反而会让前后端前缀不一致。
+ */
+const { basePath: BASE_PATH, baked, configured } = resolveBasePath(configDir(), {
+  useBuildArtifact: !dev,
+  artifactDir: artifactDir(),
+});
+if (!dev && baked === undefined) {
+  console.warn(
+    '[basePath] 未找到构建产物（.next/standalone/.next/required-server-files.json），' +
+      `运行期改用配置文件的 basePath（${configured || '(根路径)'}）；` +
+      '若页面路由前缀与此处不一致，请重新构建。',
+  );
+} else if (baked !== undefined && configured !== baked) {
   console.warn(
     `[basePath] 构建产物为 ${baked || '(根路径)'}，配置文件为 ${configured || '(根路径)'}；` +
       'basePath 需重新构建才生效，运行期使用构建值。',
   );
 }
-const BASE_PATH = baked ?? configured;
+
+// 把运行期前缀写回环境变量：独立 tsup 打包的服务端模块（uploads-store 等）
+// 拿不到 Next 的构建期内联，只能读这个变量，从而与 Next 侧使用同一前缀。
+process.env.NEXT_PUBLIC_BASE_PATH = BASE_PATH;
+
 const stripBase = (pathname: string): string =>
   BASE_PATH && (pathname === BASE_PATH || pathname.startsWith(`${BASE_PATH}/`))
     ? (pathname.slice(BASE_PATH.length) || '/')

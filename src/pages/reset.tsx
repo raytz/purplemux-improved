@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Circle } from 'lucide-react';
 import Spinner from '@/components/ui/spinner';
+import { withBase } from '@/lib/base-path';
 
 type TStepStatus = 'pending' | 'running' | 'done' | 'error';
 
@@ -72,7 +73,7 @@ const ResetPage = () => {
       updateStep(2, 'done');
       await new Promise((r) => setTimeout(r, REDIRECT_DELAY));
       if (cancelled) return;
-      window.location.href = '/';
+      window.location.href = withBase('/');
     };
 
     run();

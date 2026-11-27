@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadAttachmentDraft, saveAttachmentDraft } from '@/lib/attachment-draft';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 describe('attachment drafts', () => {
   it('restores uploaded thumbnails per tab and clears sent or removed attachments', () => {
     const data = new Map<string, string>();
@@ -25,5 +25,44 @@ describe('attachment drafts', () => {
     vi.stubGlobal('localStorage', { getItem: () => { throw new Error(); } });
     expect(loadAttachmentDraft('tab')).toEqual([]);
     expect(() => saveAttachmentDraft('tab', [])).not.toThrow();
+  });
+
+  it('restores thumbnails saved under a sub-path prefix', () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+      removeItem: (key: string) => data.delete(key),
+    });
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/purplemux');
+    const attachment = { id: '1', path: '/uploads/image.png', filename: 'image.png', thumbnail: '/purplemux/api/uploads/ws/tab/image.png' };
+    saveAttachmentDraft('tab1', [attachment]);
+    expect(loadAttachmentDraft('tab1')).toEqual([attachment]);
+  });
+
+  it('restores drafts written before the sub-path prefix was applied', () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+      removeItem: (key: string) => data.delete(key),
+    });
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/purplemux');
+    const attachment = { id: '1', path: '/uploads/image.png', filename: 'image.png', thumbnail: '/api/uploads/ws/tab/image.png' };
+    saveAttachmentDraft('tab1', [attachment]);
+    expect(loadAttachmentDraft('tab1')).toEqual([attachment]);
+  });
+
+  it('still rejects thumbnails that are not upload images', () => {
+    const data = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => data.set(key, value),
+      removeItem: (key: string) => data.delete(key),
+    });
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/purplemux');
+    const attachment = { id: '1', path: '/uploads/image.png', filename: 'image.png', thumbnail: '/purplemux/api/session-files/report.html' };
+    saveAttachmentDraft('tab1', [attachment]);
+    expect(loadAttachmentDraft('tab1')).toEqual([]);
   });
 });

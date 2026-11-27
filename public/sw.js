@@ -56,7 +56,8 @@ self.addEventListener('notificationclick', (event) => {
           return client.focus();
         }
       }
-      return self.clients.openWindow('/');
+      // 子路径部署时用注册作用域解析，根部署下结果与原来的 '/' 相同
+      return self.clients.openWindow(new URL('.', self.registration.scope).href);
     })
   );
 });

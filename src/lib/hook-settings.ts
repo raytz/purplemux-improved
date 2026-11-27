@@ -4,6 +4,7 @@ import os from 'os';
 import { createLogger } from '@/lib/logger';
 import { STATUSLINE_SCRIPT_PATH, STATUSLINE_SCRIPT_CONTENT } from '@/lib/statusline-script';
 import { CLAUDE_LAUNCHER_FILENAME, CLAUDE_LAUNCHER_SCRIPT } from '@/lib/providers/claude/launcher';
+import { getBasePath } from '@/lib/base-path';
 
 const log = createLogger('hooks');
 const codexLog = createLogger('codex-hook');
@@ -11,6 +12,7 @@ const codexLog = createLogger('codex-hook');
 const BASE_DIR = path.join(os.homedir(), '.purplemux');
 const HOOKS_FILE = path.join(BASE_DIR, 'hooks.json');
 const PORT_FILE = path.join(BASE_DIR, 'port');
+const BASE_PATH_FILE = path.join(BASE_DIR, 'base-path');
 const HOOK_SCRIPT = path.join(BASE_DIR, 'status-hook.sh');
 const CODEX_HOOK_SCRIPT = path.join(BASE_DIR, 'codex-hook.sh');
 
@@ -109,6 +111,8 @@ export const ensureHookSettings = async (port: number): Promise<IEnsureHookSetti
   await writeManagedScript(path.join(BASE_DIR, CLAUDE_LAUNCHER_FILENAME), CLAUDE_LAUNCHER_SCRIPT, 0o600);
 
   await fs.writeFile(PORT_FILE, String(port), { mode: 0o600 });
+  // 发布运行期 basePath：pmuxi CLI 与其它本地工具据此拼接子路径前缀。
+  await fs.writeFile(BASE_PATH_FILE, getBasePath(), { mode: 0o600 });
 
   await writeManagedScript(HOOK_SCRIPT, HOOK_SCRIPT_CONTENT, 0o755);
   await writeManagedScript(STATUSLINE_SCRIPT_PATH, STATUSLINE_SCRIPT_CONTENT, 0o755);
@@ -139,6 +143,11 @@ export const ensureHookSettings = async (port: number): Promise<IEnsureHookSetti
 export const removePortFile = async (): Promise<void> => {
   try {
     await fs.unlink(PORT_FILE);
+  } catch {
+    // already removed
+  }
+  try {
+    await fs.unlink(BASE_PATH_FILE);
   } catch {
     // already removed
   }

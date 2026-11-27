@@ -1,3 +1,5 @@
+import { isUploadImageUrl } from '@/lib/upload-image-url';
+
 export interface IAttachmentDraft {
   id: string;
   path: string;
@@ -15,7 +17,9 @@ export const loadAttachmentDraft = (tabId?: string): IAttachmentDraft[] => {
     return data.filter((item): item is IAttachmentDraft => item &&
       typeof item.id === 'string' && typeof item.path === 'string' &&
       typeof item.filename === 'string' && typeof item.thumbnail === 'string' &&
-      item.thumbnail.startsWith('/api/uploads/'));
+      // 子路径部署时缩略图地址形如 /purplemux/api/uploads/...，
+      // 需要兼容当前 basePath 以及此前保存的根路径草稿。
+      isUploadImageUrl(item.thumbnail));
   } catch { return []; }
 };
 

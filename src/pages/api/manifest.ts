@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { withBase } from '@/lib/base-path';
 
-const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
-const withBasePath = (path: string) => `${basePath}${path}`;
+const withBasePath = (path: string) => withBase(path);
 
 const handler = (_req: NextApiRequest, res: NextApiResponse) => {
   const manifest = {

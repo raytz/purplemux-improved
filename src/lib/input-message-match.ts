@@ -1,6 +1,6 @@
 import type { IQueuedInput } from '@/lib/input-queue';
 import type { ITimelineUserMessage } from '@/types/timeline';
-import { withBase } from '@/lib/base-path';
+import { buildUploadImageUrl, isUploadImageUrl } from '@/lib/upload-image-url';
 
 const normalize = (text: string) => text.replace(/\r\n/g, '\n').trim();
 export const escapeInputAttachmentPath = (path: string) => path.replace(/[ \t\\'"(){}[\]!#$&;`|*?<>~^%]/g, '\\$&');
@@ -8,8 +8,10 @@ export const escapeInputAttachmentPath = (path: string) => path.replace(/[ \t\\'
 export const inputAttachmentImageUrl = (path: string): string | undefined => {
   const suffix = path.replace(/\\/g, '/').split('/uploads/')[1];
   if (!suffix || !/\.(?:png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(suffix)) return undefined;
-  return withBase(`/api/uploads/${suffix.split('/').map(encodeURIComponent).join('/')}`);
+  return buildUploadImageUrl(suffix.split('/'));
 };
+
+export { isUploadImageUrl };
 
 export const matchesInputMessage = (entry: ITimelineUserMessage, message: IQueuedInput, since: number | undefined): boolean => {
   if (since === undefined || !Number.isFinite(since) || entry.pending || entry.timestamp < since) return false;
@@ -24,7 +26,7 @@ export const matchesInputMessage = (entry: ITimelineUserMessage, message: IQueue
   });
   if (unusedImages.length) return false;
   const candidates = [text];
-  const imageCount = entry.images?.filter((url) => url.startsWith('/api/uploads/')).length ?? 0;
+  const imageCount = entry.images?.filter(isUploadImageUrl).length ?? 0;
   let withoutMarkers = text;
   for (let index = 1; index <= imageCount; index++) {
     const marker = `[Image #${index}]`;
