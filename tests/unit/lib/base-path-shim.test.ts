@@ -19,6 +19,46 @@ afterEach(() => {
 describe('base path runtime shim', () => {
   const fetched = (spy: ReturnType<typeof vi.fn>): unknown => spy.mock.calls[0]?.[0];
 
+  it('prefixes same-origin WebSocket urls', () => {
+    const urls: string[] = [];
+    class FakeWebSocket {
+      constructor(url: string) {
+        urls.push(url);
+      }
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    vi.stubGlobal('location', {
+      origin: 'https://app.example.com',
+      href: 'https://app.example.com/purplemux/',
+    });
+    installBasePathShim();
+
+    new WebSocket('wss://app.example.com/api/status');
+    expect(urls[0]).toBe('wss://app.example.com/purplemux/api/status');
+  });
+
+  it('does not rewrite cross-origin WebSocket urls', () => {
+    const urls: string[] = [];
+    class FakeWebSocket {
+      constructor(url: string) {
+        urls.push(url);
+      }
+      static readonly CONNECTING = 0;
+      static readonly OPEN = 1;
+      static readonly CLOSING = 2;
+      static readonly CLOSED = 3;
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    installBasePathShim();
+
+    new WebSocket('wss://other.example.com/api/status');
+    expect(urls[0]).toBe('wss://other.example.com/api/status');
+  });
+
   it('prefixes same-origin fetch requests', async () => {
     const spy = vi.fn(() => Promise.resolve(new Response('ok')));
     vi.stubGlobal('fetch', spy);

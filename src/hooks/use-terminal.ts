@@ -13,6 +13,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { DEFAULT_LINE_HEIGHT } from "@/lib/terminal-line-height";
 import isElectron from "@/hooks/use-is-electron";
 import { TerminalWriteQueue, type TTerminalWriteCallback } from '@/lib/terminal-write-queue';
+import { withBase } from '@/lib/base-path';
 
 interface IUseTerminalOptions {
   inputEnabled?: boolean;
@@ -52,11 +53,11 @@ let fontLoadPromise: Promise<void> | null = null;
 const loadFonts = () => {
   fontLoadPromise ??= (async () => {
     const fontsToLoad = [
-      new FontFace('MesloLGLDZ', "url('/fonts/MesloLGLDZNerdFont-Regular.woff2')", {
+      new FontFace('MesloLGLDZ', `url('${withBase('/fonts/MesloLGLDZNerdFont-Regular.woff2')}')`, {
         weight: '400',
         style: 'normal',
       }),
-      new FontFace('MesloLGLDZ', "url('/fonts/MesloLGLDZNerdFont-Bold.woff2')", {
+      new FontFace('MesloLGLDZ', `url('${withBase('/fonts/MesloLGLDZNerdFont-Bold.woff2')}')`, {
         weight: '700',
         style: 'normal',
       }),

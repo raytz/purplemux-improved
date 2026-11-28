@@ -43,8 +43,14 @@ export function withoutBase(path: string): string {
  * 运行时 shim 会拦截页面上的所有 fetch/WebSocket/EventSource，
  * 跨域请求的 pathname 不能被改写，否则会请求到不存在的地址。
  */
+const httpOrigin = (origin: string): string =>
+  origin.replace(/^ws(s)?:\/\//i, (_match, secure: string | undefined) =>
+    (secure ? 'https://' : 'http://'));
+
 const withBaseSameOrigin = (url: URL, origin: string): URL => {
-  if (url.origin !== origin) return url;
+  // WebSocket 的 origin 协议是 ws:/wss:，与页面的 http:/https: 不同，
+  // 直接比较会把同源的 ws:// 请求误判成跨域，导致漏加前缀。
+  if (httpOrigin(url.origin) !== httpOrigin(origin)) return url;
   const patched = withBase(url.pathname);
   if (patched === url.pathname) return url;
   url.pathname = patched;
